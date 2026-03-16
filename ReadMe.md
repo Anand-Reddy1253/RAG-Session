@@ -1,3 +1,8 @@
+
+#DUMMY PROJECT FOR CO-PILOT TESTING
+
+---
+
 # RAG Session — Retrieval-Augmented Generation Demo
 
 A hands-on demo project that showcases how to build a **Retrieval-Augmented Generation (RAG)** pipeline using enterprise documents. The system ingests internal company files, indexes them into a vector store, and lets users ask natural-language questions that are answered using the most relevant document chunks.
