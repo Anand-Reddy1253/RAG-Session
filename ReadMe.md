@@ -45,6 +45,23 @@ RAG-Session/
 │   ├── acme_sales_q3.csv          # Q3 sales data for ACME Corp
 │   ├── globex_crm_profile.json    # Globex CRM customer profile export
 │   └── filelist.txt               # Index of available documents
+├── rag/                           # Core RAG pipeline package
+│   ├── __init__.py
+│   ├── loader.py                  # Document loading (PDF, DOCX, CSV, JSON)
+│   ├── embedder.py                # OpenAI embedding model wrapper
+│   ├── vector_store.py            # FAISS vector store build / load helpers
+│   ├── memory.py                  # Conversation memory (per-session history)
+│   └── chain.py                   # History-aware RAG chain (LCEL + memory)
+├── tests/                         # Unit tests (pytest)
+│   ├── test_loader.py
+│   ├── test_embedder.py
+│   ├── test_memory.py
+│   └── test_rag.py
+├── main.py                        # Interactive CLI chatbot
+├── config.py                      # Environment-based configuration
+├── requirements.txt
+├── pytest.ini
+├── .env.example                   # Template for .env configuration
 └── ReadMe.md                      # Project documentation (this file)
 ```
 
@@ -96,6 +113,11 @@ Create a `.env` file in the project root:
 OPENAI_API_KEY=sk-...
 VECTOR_STORE_PATH=./vector_store
 DOCS_DIR=./docs
+LLM_MODEL=gpt-3.5-turbo
+EMBEDDING_MODEL=text-embedding-ada-002
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+RETRIEVER_K=4
 ```
 
 ### Run the Demo
@@ -104,31 +126,64 @@ DOCS_DIR=./docs
 python main.py
 ```
 
+### Run Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
 ---
 
 ## How It Works
 
 ```
-User Query
+User Query + Chat History
+    │
+    ▼
+[ History-Aware Retriever ]  ← rewrites follow-up questions into standalone queries
     │
     ▼
 [ Embedding Model ] ──► Query Vector
                               │
                               ▼
-                     [ Vector Store ]
+                     [ Vector Store (FAISS) ]
                               │
                     Top-K Relevant Chunks
                               │
                               ▼
-               [ LLM (GPT-4 / Llama / etc.) ]
+               [ LLM (GPT-4 / GPT-3.5-turbo) ]
                               │
                         Grounded Answer
+                              │
+                              ▼
+                  [ Conversation Memory ]  ← stores Q&A pairs per session
 ```
 
-1. The query is converted to an embedding vector.
-2. Cosine similarity search retrieves the *k* most relevant document chunks.
-3. The chunks are injected into a prompt template alongside the original query.
-4. The LLM generates a factual answer backed by the retrieved context.
+1. The query (plus any prior chat history) is sent to a **history-aware retriever** that
+   rewrites follow-up questions into self-contained queries before hitting the vector store.
+2. The rewritten query is converted to an embedding vector and used for cosine-similarity
+   search, returning the *k* most relevant document chunks.
+3. The retrieved chunks, the original query, and the full conversation history are injected
+   into a prompt and passed to the LLM.
+4. The LLM generates a factual, grounded answer.
+5. Both the user message and the AI response are stored in **per-session conversation memory**
+   so that follow-up questions have full context.
+
+### Conversation Memory
+
+The memory subsystem (`rag/memory.py`) keeps a separate
+`ChatMessageHistory` for every *session ID*. This allows multiple independent
+conversations to coexist without interfering with each other.
+
+| Operation | Method |
+|---|---|
+| Access session history | `memory.get_session_history(session_id)` |
+| Clear a session | `memory.clear_session(session_id)` |
+| List active sessions | `memory.list_sessions()` |
+| Count messages | `memory.get_message_count(session_id)` |
+
+During a conversation the CLI automatically appends each turn to the history.
+Type **`clear`** at the prompt to wipe the history for the current session.
 
 ---
 
